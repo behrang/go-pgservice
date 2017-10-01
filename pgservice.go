@@ -21,13 +21,27 @@ var validParams = map[string]string{
   "sslrootcert": "PGSSLROOTCERT",
 }
 
-// Apply config options specified in `PGSERVICE` section of `PGSERVICEFILE`
+// Apply config options specified in `service` section of `file`
 // (defaults to `~/.pg_service.conf`) to environment variables. This make them
 // available to [`pq`](https://github.com/lib/pq). It also removes `PGSERVICE`
 // and `PGSERVICEFILE` from environment variables to prevent `pq` panic.
 // Read more about [The Connection Service File](https://www.postgresql.org/docs/current/static/libpq-pgservice.html).
-func Apply() error {
-  params, err := ReadFile()
+func Apply(service, file string) error {
+  pgservice, ok := os.LookupEnv("PGSERVICE")
+  if ok {
+    service = pgservice
+  }
+
+  pgservicefile, ok := os.LookupEnv("PGSERVICEFILE")
+  if ok {
+    file = pgservicefile
+  }
+
+  if file == "" {
+    file = os.ExpandEnv("${HOME}/.pg_service.conf")
+  }
+
+  params, err := Read(service, file)
   if err != nil {
     return err
   }
@@ -42,29 +56,19 @@ func Apply() error {
   return nil
 }
 
-// ReadFile reads options specified in PGSERVICE section of PGSERVICEFILE
-// (defaults to `~/.pg_service.conf`) and returns them as a map.
-func ReadFile() (map[string]string, error) {
+// Reads options specified in a section of a file
+// and returns them as a map.
+func Read(service, file string) (map[string]string, error) {
   result := make(map[string]string)
 
-  pgservice, ok := os.LookupEnv("PGSERVICE")
-  if !ok {
-    return result, fmt.Errorf("PGSERVICE environment variable is not set")
-  }
-
-  pgservicefile, ok := os.LookupEnv("PGSERVICEFILE")
-  if !ok {
-    pgservicefile = os.ExpandEnv("${HOME}/.pg_service.conf")
-  }
-
-  cfg, err := ini.Load(pgservicefile)
+  cfg, err := ini.Load(file)
   if err != nil {
-    return result, fmt.Errorf("error loading PGSERVICEFILE at '%s'", pgservicefile)
+    return result, fmt.Errorf("error loading PGSERVICEFILE at '%s'", file)
   }
 
   cfg.BlockMode = false
 
-  section, err := cfg.GetSection(pgservice)
+  section, err := cfg.GetSection(service)
   if err != nil {
     return result, err
   }
